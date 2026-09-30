@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf }}">
+  <title>96 well / Sample registry</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='sheet.css') }}">
+  <script defer src="{{ url_for('static', filename='sheet-tools.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='registry.js') }}"></script>
+</head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="/">▦ <span>96 well<small>SAMPLE REGISTRY</small></span></a>
+  <p class="eyebrow">WORKSPACE</p>
+  <button class="nav active" id="show-library">Plate library <span>↗</span></button>
+  <button class="nav" id="show-wells">All wells / Search</button>
+  <button class="nav" id="show-approvals">Approved labels</button>
+  <button class="nav" id="new-plate">＋ New plate</button>
+  <button class="nav" id="import-open">↑ Import Excel</button>
+  <button class="nav" id="trash-open">Trash</button>
+  <div class="side-bottom"><span class="status-dot"></span> Local workspace<p>Record knock-in cells, treatments and fixed samples<br>for each well.</p></div>
+</aside>
+<main>
+  <header class="topbar"><span>Microscopy / Screening</span><span class="local">Saved on the app host</span></header>
+  <div id="notice" role="status" hidden></div>
+  <section id="library">
+    <div class="page-heading"><div><p class="eyebrow">SAMPLE COLLECTION</p><h1>Plate library</h1><p class="muted">From seeding to fixation. Keep sample information together in one plate map.</p></div><button class="primary" id="new-top">＋ Create plate</button></div>
+    <div class="stats"><div><span>Registered plates</span><strong id="stat-plates">0</strong></div><div><span>Populated wells</span><strong id="stat-wells">0</strong></div><div><span>Genes</span><strong id="stat-genes">0</strong></div><div><span>KI cell stocks</span><strong id="stat-stocks">0</strong></div><div><span>Conditions</span><strong id="stat-conditions">0</strong></div></div>
+    <details class="library-summary"><summary>Registered genes, cell stocks, conditions and counting rules</summary><p>Genes: distinct names in Gene_InN format. KI cell stocks: distinct cell type and stock combinations, excluding WT. These are not physical cell counts or confirmed KI counts. Conditions: distinct entries in Conditions. Blank values and hyphens are excluded; unverified gene names are included.</p><div id="library-summary"></div></details>
+    <div class="toolbar"><label class="search">Search<input id="search" placeholder="Plate, experimenter, gene, stock, condition or eLab ID"></label><div class="actions"><a class="button" href="/api/export/metadata">All metadata Excel ↓</a><a class="button" href="/api/export/plates">Plate table Excel ↓</a><a class="button" href="/api/export/platemaps">Plate maps Excel ↓</a></div></div>
+    <div id="plate-list" class="plate-list"></div>
+    <div id="empty" class="empty"><div class="empty-icon">▦</div><h2>Register your first plate</h2><p>Import an existing Screening workbook, or<br>start with an empty 96-well plate.</p><button id="import-empty">Import existing Excel</button></div>
+    <div class="info-strip"><b>Use your existing Excel files</b><span>Supports combined tables and one sheet per plate. Review the data before importing.</span></div>
+  </section>
+  <section id="all-wells" hidden>
+    <div class="page-heading"><div><p class="eyebrow">ALL WELLS</p><h1>All wells / Search</h1><p class="muted">Search saved data across all plates. Click a plate / well to open it in the editor.</p></div><div class="actions"><a class="button" href="/api/export/metadata">All metadata Excel ↓</a><button id="reload-wells">Refresh data</button></div></div>
+    <div class="toolbar"><label class="search">Search genes, Gene intron, stocks, conditions or plates<input id="well-search" placeholder="For example: PKM, PKM_In4, PKM-In4, HEK293T_WT"></label><label>Match mode<select id="well-match"><option value="partial">Partial match</option><option value="exact">Exact gene / Gene intron match</option></select></label><label class="check-label"><input type="checkbox" id="include-empty">Include empty wells</label></div>
+    <p id="well-results" role="status"></p><p class="muted">All fields are included. Long values wrap. Plates in Trash are excluded.</p>
+    <div class="registry-table-wrap"><table id="all-well-table" class="registry-table"><thead></thead><tbody></tbody></table></div>
+  </section>
+  <section id="shared-approvals" hidden>
+    <div class="page-heading"><div><p class="eyebrow">APPROVED LABELS</p><h1>Approved labels</h1><p class="muted">An approval applies to the same field and label across all plates and suppresses its flags.</p></div><button id="add-rule">＋ Add approval</button></div>
+    <p class="muted">Changes take effect immediately when saved here. Disable an approval to flag the label again. Well values are not changed.</p>
+    <label>Search approved labels<input id="rule-search" placeholder="Label, reason or approver"></label><p id="rule-count" role="status"></p>
+    <div class="registry-table-wrap"><table class="registry-table"><thead><tr><th>Field</th><th>Approved label</th><th>Reason</th><th>Approver</th><th>Updated at</th><th>Status</th><th>Actions</th></tr></thead><tbody id="rule-list"></tbody></table></div>
+  </section>
+  <section id="editor" hidden>
+    <div class="page-heading"><div><p class="eyebrow">PLATE EDITOR</p><h1 id="editor-title">New plate</h1><p class="muted" id="save-state">Unsaved</p></div><div class="actions"><button id="trash-plate" class="trash-button" hidden>Delete plate</button><button id="duplicate">Duplicate</button><button class="primary" id="save">Save plate</button></div></div>
+    <div class="card metadata"><div class="section-title"><h2>01 <span>Plate information</span></h2><small>* Required</small></div><div class="meta-grid">
+      <label>Plate name *<input id="plate-name" maxlength="100" placeholder="For example: Plate49"></label>
+      <label>Experimenter *<input id="experimenter" placeholder="Enter name"></label>
+      <label>Fixation conditions<input id="fixation" placeholder="Fixative, concentration, duration, etc."></label>
+      <label>Storage location<input id="storage" placeholder="Fridge, shelf, box, etc."></label>
+      <label>eLabFTW notebook / experiment ID<input id="elab_experiment_id" inputmode="numeric" maxlength="20" placeholder="For example: 14985"><a id="elab-link" target="_blank" rel="noopener noreferrer" hidden>Open experiment notebook ↗</a><span id="elab-error" class="field-error" hidden>Use digits only.</span></label>
+    </div></div>
+    <div class="edit-mode" role="group" aria-label="Editing mode"><button id="mode-sheet" aria-pressed="true">Table editor</button><button id="mode-map" aria-pressed="false">Map editor</button></div>
+<details id="gene-report" class="gene-report"><summary id="gene-summary">Checking gene and stock labels…</summary><p id="gene-reference"></p><ul id="gene-issues"></ul></details>
+    <div id="sheet-panel" class="card">
+      <div class="section-title"><h2>02 <span>Edit well information</span></h2><button id="sheet-save" class="primary">Save changes</button></div>
+      <p class="muted">Drag or Shift-click to select a range. Use ⌘/Ctrl+C to copy and Delete to clear. Double-click, press F2 or start typing to edit. While editing, Shift+Enter inserts a line break and Enter confirms.</p>
+      <div class="sheet-toolbar"><label>Visible fields<select id="sheet-group"><option value="all">All fields</option><option value="cells">Cells / conditions</option><option value="staining">Antibodies / staining</option><option value="imaging">Imaging / notes</option></select></label><label class="check-label"><input id="skip-blank" type="checkbox" checked>Skip blank cells when pasting</label><label class="check-label"><input id="compact-sheet" type="checkbox" checked>Compact</label><button id="wide-sheet">Wide view</button></div>
+      <div class="sheet-actions"><span id="range-label">No cells selected</span><button id="sheet-copy">Copy selection</button><button id="sheet-clear">Clear selection</button><button id="sheet-undo" disabled>Undo table edit</button><button id="normalize-genes">Normalize gene / stock labels</button></div>
+      <div class="sheet-toolbar"><label>Zoom<select id="sheet-scale"><option value="100" selected>100%</option><option value="85">85%</option><option value="70">70%</option><option value="55">55%</option></select></label><span class="muted">⌘Z / Ctrl+Z: undo the last table edit</span></div>
+      <p class="muted compact">Skip blank cells ON: keep existing values when the source cell is blank. OFF: paste blanks and clear existing values. Row order: A1 → B1 → … → H1 → A2. Do not include headers or the Location column.</p>
+      <div id="sheet-scroll" class="sheet-scroll compact" data-scale="100" tabindex="0" aria-label="Well information table"><table id="well-sheet"><caption class="sr-only">96-well sample information</caption><thead></thead><tbody></tbody></table></div>
+      <div class="cell-detail"><span id="active-cell-label">Selected cell value</span><output id="active-cell-value">Select a cell to see its full value.</output></div>
+      <p id="sheet-status" class="muted" role="status">All 96 wells are displayed.</p>
+    </div>
+    
+    <div class="workspace" id="map-panel" hidden><div class="card map-card"><div class="section-title"><h2>02 <span>96-well map</span></h2><label class="view-label">Display<select id="view-field"><option value="ID">Sample ID</option><option value="Cell_Line_Stock">Cell stock</option><option value="Gene_intron">Gene / intron</option><option value="Conditions">Conditions</option><option value="legacy">Original map labels</option></select></label></div>
+      <p class="map-help">Click to select one well. Shift/⌘/Ctrl-click to add or remove wells. Click a row or column header to select only that row or column.</p>
+      <div class="map-tools"><span id="used-count">0 / 96 wells</span><div><button id="select-all">Select all</button><button id="select-none">Deselect all</button></div></div>
+      <div class="map-scroll"><div id="plate-grid" class="plate-grid" aria-label="96-well map"></div></div>
+      <div class="legend"><span>○ Empty</span><span>● Populated</span><span>✓ Selected</span><span id="selected-count">0 wells selected</span></div>
+      <details id="warning-box" hidden><summary id="warning-summary"></summary><p>Differences between the source table and its map are listed here. The table takes precedence. Check the original file and correct wells as needed.</p><ul id="warnings"></ul></details>
+    </div><div class="card well-editor"><div class="section-title"><h2>03 <span>Well information</span></h2><span class="selection-tag" id="selection-label">No selection</span></div><p class="muted compact">Selecting one well shows its current values. For multiple wells, only fields you edit are applied.</p><form id="well-form"><div id="well-fields"></div><button type="submit" class="primary full">Apply to selected wells</button></form><button class="danger full" id="clear-wells">Clear selected wells</button><p class="muted compact">After applying changes, save the plate to store them on the app host.</p></div></div>
+    <div class="editor-footer"><div class="actions"><a id="download-table" class="button" hidden>Plate table Excel ↓</a><a id="download-map" class="button" hidden>Plate maps Excel ↓</a><a id="source-download" class="button" hidden>Original file ↓</a><button id="history" hidden>Save history</button></div><span id="revision" class="muted"></span></div>
+  </section>
+</main>
+<dialog id="import-dialog"><div class="dialog-heading"><div><p class="eyebrow">IMPORT EXCEL</p><h2>Import existing plates</h2></div><button id="import-close" aria-label="Close">×</button></div><p class="muted">Choose Screening_96well_plates.xlsx, platemaps.xlsx or a completed template.<br>The original file is retained. Existing plates are not overwritten automatically.</p><div class="template-download"><a class="button" id="download-template" href="/api/template" download="96wellplatemap_template.xlsx">↓ Download 96wellplatemap_template.xlsx</a><p class="muted">Fill in the template, save it and upload it below.</p></div><label class="file-drop">Excel file (.xlsx, up to 12 MB)<input type="file" accept=".xlsx" id="import-file"></label><p id="import-status" role="status"></p><div id="import-preview" hidden><label>Plate to import<select id="import-select"></select></label><p id="import-detail"></p><p class="muted">Review and save one plate at a time. Return here to select the remaining plates from this import.</p><button id="import-use" class="primary">Review this plate in the editor</button></div></dialog>
+<dialog id="history-dialog"><div class="dialog-heading"><h2>Save history</h2><button id="history-close" aria-label="Close">×</button></div><div id="history-list"></div></dialog>
+<dialog id="trash-dialog"><div class="dialog-heading"><h2>Trash</h2><button id="trash-close" aria-label="Close Trash">×</button></div><p class="muted">Restore a plate or permanently delete it. Permanent deletion removes well data and all plate history and cannot be undone. Uploaded originals are removed only when no other plate or history references them. Shared approvals, shared originals, external Excel files and backups are retained.</p><p id="trash-status" role="status"></p><div id="trash-list"></div></dialog>
+<dialog id="purge-dialog"><div class="dialog-heading"><h2>Permanently delete plate</h2><button id="purge-close" aria-label="Cancel permanent deletion">×</button></div><p id="purge-description"></p><p>This action cannot be undone in the app.</p><label>Enter the plate name to confirm<input id="purge-name" autocomplete="off"></label><p id="purge-status" role="status"></p><button id="purge-confirm" class="trash-button">Delete permanently</button></dialog>
+<dialog id="approval-dialog"><div class="dialog-heading"><h2>Review and approve label</h2><button id="approval-close" aria-label="Cancel approval">×</button></div><p id="approval-description"></p><label>Approved value (edit if needed)<input id="approval-value" maxlength="5000"></label><label>Approval reason<input id="approval-reason" maxlength="2000" placeholder="For example: Confirmed as a HEK293T wild-type control in the experiment notebook"></label><label class="check-label"><input id="approval-all" type="checkbox">Apply this value to matching labels with the same cell type on this plate</label><p class="muted">Approvals are saved immediately to the shared list and suppress flags for the same field and label across all plates. The experimenter name is recorded as the approver. If you change well values, also save the plate.</p><p id="approval-status" role="status"></p><button id="approval-confirm" class="primary">Approve this value</button></dialog>
+<dialog id="rule-dialog"><div class="dialog-heading"><h2>Edit shared approval</h2><button id="rule-close" aria-label="Close shared approval editor">×</button></div><label>Field<select id="rule-field"><option value="Cell_Line_Stock">Cell_Line_Stock</option><option value="Gene_intron">Gene intron</option></select></label><label>Approved label<input id="rule-value" maxlength="5000"></label><label>Reason<input id="rule-reason" maxlength="2000"></label><label>Approver<input id="rule-author" maxlength="5000"></label><label class="check-label"><input id="rule-enabled" type="checkbox" checked>Enabled (suppress flags for this field and label)</label><p class="muted">Applies to all plates. Changing the label removes approval for the previous label. Existing well values are not replaced.</p><p id="rule-status" role="status"></p><button id="rule-save" class="primary">Save approval</button></dialog>
+</body></html>
